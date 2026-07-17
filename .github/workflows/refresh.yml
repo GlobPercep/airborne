@@ -26,14 +26,16 @@ jobs:
           if curl -sf --max-time 90 "https://opensky-network.org/api/states/all?extended=1" -o /tmp/states.json \
              && [ "$(wc -c < /tmp/states.json)" -gt 100000 ]; then
             mv /tmp/states.json data/states.json
-            echo "fresh snapshot fetched"
+            echo "fresh OpenSky snapshot fetched"
+          elif python3 scripts/fetch_regional.py data/states.json; then
+            echo "OpenSky unavailable — synthesized snapshot from airplanes.live regions"
           elif curl -sf --max-time 30 "https://globpercep.github.io/airborne/data/states.json" -o /tmp/prev.json \
              && [ "$(wc -c < /tmp/prev.json)" -gt 100000 ]; then
             mv /tmp/prev.json data/states.json
-            echo "OpenSky unavailable (rate limit?) — kept previously deployed snapshot"
+            echo "all sources unavailable — kept previously deployed snapshot"
           else
             cp seed-states.json data/states.json
-            echo "OpenSky and previous deploy unavailable — using bundled seed"
+            echo "all sources unavailable — using bundled seed"
           fi
 
       - name: Publish gh-pages
