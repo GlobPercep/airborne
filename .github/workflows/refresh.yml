@@ -1,0 +1,48 @@
+name: deploy-with-fresh-data
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '*/15 * * * *'   # OpenSky anonymous quota: 400 credits/day, global fetch = 4
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch global aircraft states from OpenSky
+        run: |
+          mkdir -p data
+          if curl -sf --max-time 90 "https://opensky-network.org/api/states/all?extended=1" -o /tmp/states.json \
+             && [ "$(wc -c < /tmp/states.json)" -gt 100000 ]; then
+            mv /tmp/states.json data/states.json
+            echo "fresh OpenSky snapshot fetched"
+          elif python3 scripts/fetch_regional.py data/states.json; then
+            echo "OpenSky unavailable — synthesized snapshot from airplanes.live regions"
+          elif curl -sf --max-time 30 "https://globpercep.github.io/airborne/data/states.json" -o /tmp/prev.json \
+             && [ "$(wc -c < /tmp/prev.json)" -gt 100000 ]; then
+            mv /tmp/prev.json data/states.json
+            echo "all sources unavailable — kept previously deployed snapshot"
+          else
+            cp seed-states.json data/states.json
+            echo "all sources unavailable — using bundled seed"
+          fi
+
+      - name: Publish gh-pages
+        run: |
+          git config user.name github-actions
+          git config user.email actions@users.noreply.github.com
+          git checkout --orphan deploy
+          git add -A
+          git commit -q -m "deploy $(date -u +%FT%TZ)"
+          git push -f origin deploy:gh-pages

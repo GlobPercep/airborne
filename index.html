@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#02040a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>AIRBORNE — Live Flight Tracker</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✈️</text></svg>">
+<style>
+  :root {
+    --panel-bg: rgba(8, 13, 26, 0.72);
+    --panel-border: rgba(140, 170, 255, 0.14);
+    --text: #dbe4f5;
+    --text-dim: #7f8ca6;
+    --accent: #ffc14d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; background: #02040a; color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  .panel { background: var(--panel-bg); border: 1px solid var(--panel-border);
+    border-radius: 12px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+
+  #hud-top { position: fixed; top: env(safe-area-inset-top, 0); left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 12px 14px; pointer-events: none; gap: 10px; }
+  #title-box { pointer-events: auto; padding: 10px 14px; }
+  #title-box h1 { font-size: 15px; font-weight: 700; letter-spacing: 3px; color: #fff; }
+  #title-box h1 span { color: var(--accent); }
+  #stats { font-size: 11px; color: var(--text-dim); margin-top: 3px; font-variant-numeric: tabular-nums; }
+
+  #search-box { pointer-events: auto; width: min(300px, 46vw); position: relative; }
+  #search { width: 100%; padding: 10px 13px; font-size: 13px; color: var(--text);
+    background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 12px;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); outline: none; }
+  #search:focus { border-color: rgba(255,193,77,.5); }
+  #search::placeholder { color: var(--text-dim); }
+  #search-results { position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+    display: none; overflow: hidden; }
+  #search-results button { display: block; width: 100%; text-align: left; padding: 9px 13px;
+    font-size: 12px; color: var(--text); background: none; border: none; cursor: pointer; }
+  #search-results button:hover { background: rgba(255,193,77,.12); }
+
+  #info { position: fixed; right: 14px; top: 74px; width: 252px; padding: 13px 15px;
+    display: none; z-index: 5; }
+  #info h2 { font-size: 13px; color: #fff; letter-spacing: .5px; padding-right: 20px; }
+  #info-close { position: absolute; top: 8px; right: 10px; background: none; border: none;
+    color: var(--text-dim); font-size: 16px; cursor: pointer; }
+  #info table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 11.5px; }
+  #info td { padding: 3px 0; color: var(--text-dim); }
+  #info td + td { text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  #hud-bottom { position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0) + 10px);
+    display: flex; justify-content: space-between; align-items: flex-end; padding: 0 14px;
+    gap: 10px; pointer-events: none; flex-wrap: wrap; }
+  #groups { pointer-events: auto; display: flex; gap: 6px; flex-wrap: wrap; max-width: 60vw; }
+  .chip { display: flex; align-items: center; gap: 6px; padding: 7px 11px; font-size: 11.5px;
+    color: var(--text); cursor: pointer; user-select: none; -webkit-user-select: none;
+    background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 999px;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 6px currentColor; }
+  .chip .n { color: var(--text-dim); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+  .chip.off { opacity: .38; }
+  .chip.off .dot { box-shadow: none; }
+
+  #time-box { pointer-events: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  #clock { padding: 7px 12px; font-size: 12px; font-variant-numeric: tabular-nums;
+    color: var(--text); display: flex; align-items: center; gap: 8px; }
+  #live-dot { width: 7px; height: 7px; border-radius: 50%; background: #ff5f5f;
+    box-shadow: 0 0 8px #ff5f5f; animation: pulse 1.6s infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+  #freshness { padding: 6px 12px; font-size: 10.5px; color: var(--text-dim);
+    font-variant-numeric: tabular-nums; }
+
+  #tooltip { position: fixed; display: none; align-items: center; gap: 7px; padding: 6px 10px;
+    font-size: 11.5px; color: #fff; pointer-events: none; z-index: 20; white-space: nowrap; }
+  #tooltip .dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 6px currentColor; }
+  #tooltip .sub { color: var(--text-dim); font-size: 10.5px; }
+
+  #loading { position: fixed; inset: 0; background: #02040a; z-index: 100;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    transition: opacity .6s; }
+  #loading.done { opacity: 0; pointer-events: none; }
+  #loading .logo { font-size: 26px; font-weight: 800; letter-spacing: 10px; color: #fff; }
+  #loading .logo span { color: var(--accent); }
+  #bar-wrap { width: min(280px, 70vw); height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; }
+  #bar { height: 100%; width: 0%; background: var(--accent); border-radius: 2px; transition: width .2s; }
+  #load-status { font-size: 12px; color: var(--text-dim); }
+  #load-error { display: none; color: #ff8a8a; font-size: 12px; max-width: 78vw; text-align: center; }
+  #retry { display: none; padding: 8px 22px; border-radius: 999px; border: 1px solid var(--accent);
+    background: none; color: var(--accent); font-size: 13px; cursor: pointer; }
+
+  #credit { position: fixed; left: 14px; bottom: 2px; font-size: 9.5px; color: rgba(127,140,166,.55);
+    pointer-events: none; z-index: 2; }
+
+  @media (max-width: 640px) {
+    #title-box h1 { font-size: 12.5px; letter-spacing: 2px; }
+    #stats { font-size: 9.5px; }
+    #info { right: 10px; left: auto; top: 66px; width: 218px; }
+    #groups { max-width: 100vw; }
+    #hud-bottom { flex-direction: column; align-items: stretch; }
+    #time-box { align-items: stretch; }
+    .chip { padding: 6px 9px; font-size: 10.5px; }
+    #clock { font-size: 11px; padding: 6px 10px; justify-content: center; }
+    #freshness { text-align: center; }
+    #credit { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="hud-top">
+  <div id="title-box" class="panel">
+    <h1>AIR<span>BORNE</span></h1>
+    <div id="stats">loading…</div>
+  </div>
+  <div id="search-box">
+    <input id="search" type="search" placeholder="Search flight… (UAL, N-reg…)" autocomplete="off">
+    <div id="search-results" class="panel"></div>
+  </div>
+</div>
+
+<div id="info" class="panel">
+  <button id="info-close">✕</button>
+  <h2 id="info-name"></h2>
+  <table>
+    <tr><td>Registration</td><td id="i-reg"></td></tr>
+    <tr><td>Type</td><td id="i-type"></td></tr>
+    <tr><td>ICAO24</td><td id="i-icao"></td></tr>
+    <tr><td>Altitude</td><td id="i-alt"></td></tr>
+    <tr><td>Ground speed</td><td id="i-spd"></td></tr>
+    <tr><td>Track</td><td id="i-trk"></td></tr>
+    <tr><td>Vertical rate</td><td id="i-vs"></td></tr>
+    <tr><td>Position fix</td><td id="i-fix"></td></tr>
+  </table>
+</div>
+
+<div id="hud-bottom">
+  <div id="groups"></div>
+  <div id="time-box">
+    <div id="clock" class="panel"><span id="live-dot"></span><span id="clock-text">—</span></div>
+    <div id="freshness" class="panel">—</div>
+  </div>
+</div>
+
+<div id="tooltip" class="panel"><span class="dot"></span><span id="tooltip-name"></span><span class="sub" id="tooltip-sub"></span></div>
+
+<div id="credit">global data © OpenSky Network (15-min snapshots, dead-reckoned) · live region © airplanes.live · altitude ×25 · imagery: NASA / three.js</div>
+
+<div id="loading">
+  <div class="logo">AIR<span>BORNE</span></div>
+  <div id="bar-wrap"><div id="bar"></div></div>
+  <div id="load-status">loading aircraft…</div>
+  <div id="load-error"></div>
+  <button id="retry">Retry</button>
+</div>
+
+<script type="importmap">
+  { "imports": { "three": "./vendor/three.module.js" } }
+</script>
+<script type="module" src="app.js?v=1"></script>
+</body>
+</html>
